@@ -8,7 +8,7 @@ interface DriveModalProps {
   onSuccess: (filename: string, chunks: number) => void;
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { API } from "../lib/api";
 
 export default function DriveModal({ isOpen, onClose, onSuccess }: DriveModalProps) {
   const [driveUrl, setDriveUrl] = useState("");

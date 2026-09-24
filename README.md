@@ -1,9 +1,9 @@
 # ✦ DocuSphere AI
 
-> **Next-Generation Document Intelligence, Exam Studio & Citation Engine**  
+> **Enterprise Document Intelligence, Exam Studio & Citation-Grounded Engine**  
 > *Architected & Developed by **Nishad Patil***
 
-DocuSphere AI is a production-grade document intelligence platform designed to eliminate hallucinations through mathematical, citation-backed answers. It combines **Neon Cloud PostgreSQL with pgvector (HNSW)**, **Full-Text Lexical Search (tsvector)**, and **Reciprocal Rank Fusion (RRF)** to guarantee 100% factual grounding.
+DocuSphere AI is a production-grade document intelligence platform designed to eliminate hallucinations through mathematical, citation-backed answers. It pairs **Neon Cloud PostgreSQL with pgvector (HNSW)**, **Full-Text Lexical Search (tsvector)**, and **Reciprocal Rank Fusion (RRF)** with OpenRouter / OpenAI / Gemini models to guarantee 100% factual grounding.
 
 ---
 
@@ -12,116 +12,108 @@ DocuSphere AI is a production-grade document intelligence platform designed to e
 - 📑 **100% Grounded Citations**: Every claim quotes exact page, slide, or paragraph anchors (`[1]`, `[2]`).
 - 🎓 **Exam & Viva Q&A Studio**: Generates custom examination papers (Short 2-3M, Medium 5M, Long 10M, Professor Oral Viva, and **⚡ 360° Comprehensive Coverage**).
 - ☁️ **Google Drive Direct Ingestion**: Paste any shareable Google Drive link to index files straight into pgvector.
-- 🌐 **Live Web Verification**: Corroborate PDF facts against real-time web sources (`[W1]`, `[W2]`).
-- 🔒 **Client-Isolated Privacy (24h TTL)**: Chats are stored locally on your device and auto-deleted after 24 hours. Never visible to other users.
-- 📱 **Fully Responsive & Collapsible**: One-click collapsible sidebar for distraction-free reading, optimized for laptops and mobile devices.
+- 🌐 **Live Web Verification**: Corroborate document facts against real-time web sources (`[W1]`, `[W2]`).
+- 🔒 **Client-Isolated Privacy (24h TTL)**: Ephemeral chats stored securely in browser storage and auto-deleted after 24 hours.
+- 📱 **Fully Responsive & Collapsible**: One-click collapsible sidebar for distraction-free reading, optimized for mobile & desktop.
 
 ---
 
-## 🚀 Quickstart (Run Locally)
+## 🌐 Deploy to Vercel (Frontend + Backend + Neon SQL)
 
-### 1. Clone & Setup Backend
+The repository is pre-configured with a root `vercel.json` containing **Vercel Services** and entrypoint configuration for both Next.js and FastAPI.
 
+### 1. Push to GitHub
 ```bash
-git clone https://github.com/your-username/docusphere-ai.git
-cd docusphere-ai/backend
+git add .
+git commit -m "feat: configure vercel deployment with neon sql"
+git push origin main
 ```
 
-Create a virtual environment and install dependencies:
+### 2. Import into Vercel
+1. Go to [Vercel Dashboard](https://vercel.com/new) and click **"Add New Project"**.
+2. Select your `docusphere-ai` GitHub repository.
+3. Keep **Root Directory** as `./` (the root). Vercel will automatically detect both `frontend` (Next.js) and `backend` (FastAPI) via `vercel.json`.
+
+### 3. Add Environment Variables in Vercel
+In your Vercel Project Settings > **Environment Variables**, add:
+
+| Key | Example Value | Description |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | `postgresql+psycopg://user:pass@ep-xyz.neon.tech/neondb?sslmode=require` | Your Neon Cloud PostgreSQL connection URL |
+| `OPENROUTER_API_KEY` | `sk-or-v1-...` | OpenRouter API Key (supports free models like `nex-agi/nex-n2.5-mini:free`) |
+| `OPENROUTER_MODEL` | `nex-agi/nex-n2.5-mini:free` | Default AI model |
+| `GEMINI_API_KEY` | *(Optional)* | Google Gemini API Key |
+| `OPENAI_API_KEY` | *(Optional)* | OpenAI API Key |
+| `CORS_ORIGINS` | `https://*.vercel.app` | Allowed origins |
+
+4. Click **Deploy**. Your app and API will go live on a single unified URL!
+
+---
+
+## 🚀 Run Locally
+
+### 1. Backend (FastAPI + Neon PostgreSQL)
 
 ```bash
-# Windows
+cd backend
+
+# Create & activate virtual environment
 python -m venv .venv
-.venv\Scripts\activate
+
+# Windows:
+.\.venv\Scripts\activate
+# Mac/Linux:
+# source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 
-# Mac / Linux
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Create a `.env` file in `backend/` (keep Neon SQL connection):
-
-```env
-DATABASE_URL=postgresql+psycopg://<username>:<password>@<neon_endpoint>.neon.tech/neondb?sslmode=require&channel_binding=require
-OPENROUTER_API_KEY=your_openrouter_key
-OPENROUTER_MODEL=nex-agi/nex-n2.5-mini:free
-GEMINI_API_KEY=your_gemini_key
-OPENAI_API_KEY=your_openai_key
-CORS_ORIGINS=http://localhost:3000,https://*.vercel.app
-```
-
-Start the backend:
-
-```bash
+# Start backend server
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
----
+Backend will run on **`http://localhost:8000`** with interactive docs at **`http://localhost:8000/docs`**.
 
-### 2. Run Frontend
+### 2. Frontend (Next.js Studio)
 
-Open a new terminal:
+In a new terminal:
 
 ```bash
-cd docusphere-ai/frontend
+cd frontend
 npm install
 npm run dev
 ```
 
-Visit **`http://localhost:3000`** in your browser!
+Frontend will run on **`http://localhost:3000`**.
 
 ---
 
-## 🌐 Deploy to Vercel & GitHub
+## 🏗️ Architecture
 
-### 1. Push Code to GitHub
-
-```bash
-git add .
-git commit -m "feat: complete DocuSphere AI platform"
-git push origin main
+```
+docusphere-ai/
+├── vercel.json           # Root Vercel Services & Rewrites configuration
+├── backend/
+│   ├── main.py           # Vercel entrypoint (app & serverless handler)
+│   ├── api/index.py      # Vercel serverless fallback entrypoint
+│   ├── pyproject.toml    # Vercel tool configuration
+│   ├── vercel.json       # Backend function rewrites
+│   ├── requirements.txt  # FastAPI, psycopg, SQLAlchemy, OpenAI, etc.
+│   └── app/
+│       ├── main.py       # Dual-mounted routes (/ and /api)
+│       ├── ai.py         # OpenRouter / Gemini / OpenAI engine & streaming
+│       ├── db.py         # Neon PostgreSQL + pgvector HNSW pool
+│       ├── retrieval.py  # Hybrid RRF (dense vector + tsvector lexical)
+│       └── parsers.py    # Multi-format document parser
+└── frontend/
+    ├── app/              # Next.js 16 App Router UI
+    ├── components/       # Studio, Sidebar, Chat, Modals, LoadingScreen
+    └── lib/api.ts        # Dynamic local & Vercel API resolver
 ```
 
-*(Your `.gitignore` already protects all secret `.env` and local files).*
-
-### 2. Deploy Frontend to Vercel
-
-1. Go to [Vercel Dashboard](https://vercel.com/new) and click **"Add New Project"**.
-2. Import your GitHub repository.
-3. In **Root Directory**, click **Edit** and select **`frontend`**.
-4. In **Environment Variables**, add:
-   - `NEXT_PUBLIC_API_URL` = `https://your-backend-service.onrender.com` *(or your local URL for testing)*.
-5. Click **Deploy**. Done!
-
-### 3. Deploy Backend (Render / Railway / Fly.io)
-
-DocuSphere backend runs with Neon Cloud PostgreSQL:
-
-1. **On Render / Railway**: Create a new Web Service pointing to `backend/Dockerfile` (or Python root `backend`).
-2. Add your Environment Variables:
-   - `DATABASE_URL`: Your Neon PostgreSQL connection string.
-   - `OPENROUTER_API_KEY` / `GEMINI_API_KEY` / `OPENAI_API_KEY`.
-   - `CORS_ORIGINS`: `https://your-app.vercel.app`.
-3. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-
 ---
 
-## 🏗️ Technical Architecture
-
-| Layer | Technology | Function |
-| :--- | :--- | :--- |
-| **Vector Database** | Neon PostgreSQL + `pgvector` | HNSW cosine similarity search |
-| **Lexical Engine** | PostgreSQL Full-Text Search | English stemming, proximity ranking |
-| **Fusion Algorithm**| Reciprocal Rank Fusion ($k=60$) | Non-linear rank consolidation |
-| **AI Synthesis** | OpenRouter + Gemini + OpenAI | Strict source-grounded answers |
-| **Streaming** | Server-Sent Events (SSE) | Real-time token streaming |
-| **UI Framework** | Next.js 16 + React 19 + TypeScript | Dark glassmorphic responsive studio |
-
----
-
-## 👤 Author & Architecture
+## 👤 Author & Credits
 
 **Architected & Engineered by Nishad Patil**  
-*Enterprise Document Intelligence Platform v2.0*
+*Enterprise Document Intelligence Platform*

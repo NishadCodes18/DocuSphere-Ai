@@ -6,6 +6,7 @@ from .config import settings
 engine = create_engine(
     settings.clean_database_url,
     pool_pre_ping=True,
+    pool_recycle=300,
     connect_args={"connect_timeout": 10},
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

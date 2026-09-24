@@ -8,8 +8,8 @@ import ChunkModal from "../components/ChunkModal";
 import DriveModal from "../components/DriveModal";
 import ExamModal from "../components/ExamModal";
 import LoadingScreen from "../components/LoadingScreen";
+import { API } from "../lib/api";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const CHAT_STORAGE_KEY = "docusphere_client_chats";
 const TTL_24_HOURS = 24 * 60 * 60 * 1000;
 

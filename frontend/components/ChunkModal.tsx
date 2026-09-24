@@ -16,7 +16,7 @@ interface ChunkModalProps {
   onClose: () => void;
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { API } from "../lib/api";
 
 export default function ChunkModal({ documentId, filename, onClose }: ChunkModalProps) {
   const [chunks, setChunks] = useState<ChunkItem[]>([]);

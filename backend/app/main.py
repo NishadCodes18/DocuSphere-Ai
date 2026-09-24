@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 import asyncio
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Query
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, UploadFile, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -40,14 +40,18 @@ app = FastAPI(
 )
 
 origins = [x.strip() for x in settings.cors_origins.split(",") if x.strip()]
+has_wildcard = "*" in origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins or ["*"],
-    allow_origin_regex=r"^https://.*\.vercel\.app$",
-    allow_credentials=True,
+    allow_origins=origins if (origins and not has_wildcard) else ["*"],
+    allow_origin_regex=r"^https://.*\.vercel\.app$" if not has_wildcard else None,
+    allow_credentials=not has_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+router = APIRouter()
 
 
 def get_db():
@@ -59,6 +63,7 @@ def get_db():
 
 
 @app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
+@app.api_route("/api", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def root():
     return """
     <!DOCTYPE html>
@@ -88,7 +93,7 @@ def root():
     """
 
 
-@app.api_route("/health", methods=["GET", "HEAD"])
+@router.api_route("/health", methods=["GET", "HEAD"])
 def health() -> dict:
     return {
         "status": "ok",
@@ -102,7 +107,7 @@ def health() -> dict:
 # Document Management & Ingestion (with Recycle Bin & Google Drive)
 # ---------------------------------------------------------------------------
 
-@app.api_route("/documents", methods=["GET", "HEAD"])
+@router.api_route("/documents", methods=["GET", "HEAD"])
 def list_documents(include_recycled: bool = False, db: Session = Depends(get_db)):
     """Lists active documents by default, or all documents if include_recycled=True."""
     where_clause = "" if include_recycled else "WHERE status != 'recycled' OR status IS NULL"
@@ -121,7 +126,7 @@ def list_documents(include_recycled: bool = False, db: Session = Depends(get_db)
     return [dict(row) for row in rows]
 
 
-@app.get("/documents/recycled")
+@router.get("/documents/recycled")
 def list_recycled_documents(db: Session = Depends(get_db)):
     """Lists documents currently in the Recycle Bin."""
     rows = (
@@ -139,7 +144,7 @@ def list_recycled_documents(db: Session = Depends(get_db)):
     return [dict(row) for row in rows]
 
 
-@app.post("/documents/{document_id}/recycle")
+@router.post("/documents/{document_id}/recycle")
 def recycle_document(document_id: int, db: Session = Depends(get_db)):
     """Soft-deletes a document by moving it to the Recycle Bin."""
     res = db.execute(
@@ -152,7 +157,7 @@ def recycle_document(document_id: int, db: Session = Depends(get_db)):
     return {"message": "Document moved to Recycle Bin", "id": document_id, "filename": res["filename"]}
 
 
-@app.post("/documents/{document_id}/restore")
+@router.post("/documents/{document_id}/restore")
 def restore_document(document_id: int, db: Session = Depends(get_db)):
     """Restores a document from the Recycle Bin back to active vault."""
     res = db.execute(
@@ -165,7 +170,7 @@ def restore_document(document_id: int, db: Session = Depends(get_db)):
     return {"message": "Document restored to active Knowledge Vault", "id": document_id, "filename": res["filename"]}
 
 
-@app.delete("/documents/recycle-bin/empty")
+@router.delete("/documents/recycle-bin/empty")
 def empty_recycle_bin(db: Session = Depends(get_db)):
     """Permanently deletes all recycled documents and their pgvector chunks from PostgreSQL."""
     deleted_rows = db.execute(
@@ -175,7 +180,7 @@ def empty_recycle_bin(db: Session = Depends(get_db)):
     return {"message": "Recycle Bin permanently cleared", "purged_count": len(deleted_rows)}
 
 
-@app.post("/documents/session-cleanup")
+@router.post("/documents/session-cleanup")
 def session_cleanup(db: Session = Depends(get_db)):
     """Called when ephemeral session ends or browser closes: moves all active documents to Recycle Bin."""
     updated = db.execute(
@@ -185,7 +190,7 @@ def session_cleanup(db: Session = Depends(get_db)):
     return {"message": "Session memory recycled", "recycled_count": len(updated)}
 
 
-@app.get("/documents/{document_id}/chunks")
+@router.get("/documents/{document_id}/chunks")
 def get_document_chunks(document_id: int, db: Session = Depends(get_db)):
     doc = (
         db.execute(
@@ -213,7 +218,15 @@ def get_document_chunks(document_id: int, db: Session = Depends(get_db)):
     return {"document": dict(doc), "chunks": [dict(r) for r in rows]}
 
 
-@app.delete("/documents/{document_id}")
+@router.delete("/documents/all")
+def delete_all_documents(db: Session = Depends(get_db)):
+    """Permanently deletes all documents and their pgvector chunks from PostgreSQL."""
+    deleted_rows = db.execute(text("DELETE FROM documents RETURNING id")).all()
+    db.commit()
+    return {"message": "All documents deleted permanently", "purged_count": len(deleted_rows)}
+
+
+@router.delete("/documents/{document_id}")
 def delete_document(document_id: int, db: Session = Depends(get_db)):
     doc = (
         db.execute(
@@ -295,7 +308,7 @@ def _ingest_file_bytes(content: bytes, filename: str, media_type: str, db: Sessi
             pass
 
 
-@app.post("/documents/upload")
+@router.post("/documents/upload")
 def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
     allowed = {".pdf", ".docx", ".pptx", ".txt", ".md", ".csv"}
     suffix = Path(file.filename or "").suffix.lower()
@@ -320,7 +333,7 @@ class DriveImportRequest(BaseModel):
     custom_filename: str | None = None
 
 
-@app.post("/documents/upload-drive")
+@router.post("/documents/upload-drive")
 def upload_google_drive(payload: DriveImportRequest, db: Session = Depends(get_db)):
     """Downloads a public or shareable Google Drive document and indexes it into pgvector."""
     url = payload.drive_url.strip()
@@ -415,7 +428,7 @@ def _format_citations(sources: list[dict], web_sources: list[dict] | None = None
     return res
 
 
-@app.post("/qa/query")
+@router.post("/qa/query")
 def query_documents(payload: QueryRequest, db: Session = Depends(get_db)):
     sources = hybrid_search(db, payload.question, payload.document_ids)
     web_sources = []
@@ -439,7 +452,7 @@ def query_documents(payload: QueryRequest, db: Session = Depends(get_db)):
     return {"answer": answer, "citations": _format_citations(sources, web_sources)}
 
 
-@app.post("/qa/stream")
+@router.post("/qa/stream")
 def stream_query(payload: QueryRequest, db: Session = Depends(get_db)):
     # 1. Check if this is a greeting / introduction query first — bypass retrieval
     greeting_reply = _check_greeting(payload.question)
@@ -520,7 +533,7 @@ class FrameExamRequest(BaseModel):
     enable_web_search: bool = False
 
 
-@app.post("/qa/frame-exam")
+@router.post("/qa/frame-exam")
 def frame_exam_qa(payload: FrameExamRequest, db: Session = Depends(get_db)):
     """Synthesizes exam-ready framed questions and answers based on uploaded documents."""
     sources: list[dict] = []
@@ -582,3 +595,9 @@ def frame_exam_qa(payload: FrameExamRequest, db: Session = Depends(get_db)):
         "content": exam_ans,
         "citations": _format_citations(sources, web_sources),
     }
+
+
+# Include all router endpoints both at the root / AND under /api prefix for maximum deployment flexibility
+app.include_router(router)
+app.include_router(router, prefix="/api")
+
