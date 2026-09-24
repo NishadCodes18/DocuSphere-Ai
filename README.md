@@ -5,6 +5,8 @@
 
 DocuSphere AI is a production-grade document intelligence platform designed to eliminate hallucinations through mathematical, citation-backed answers. It pairs **Neon Cloud PostgreSQL with pgvector (HNSW)**, **Full-Text Lexical Search (tsvector)**, and **Reciprocal Rank Fusion (RRF)** with OpenRouter / OpenAI / Gemini models to guarantee 100% factual grounding.
 
+Website Link : https://docu-sphere-ai-six.vercel.app/
+
 ---
 
 ## ⚡ Key Highlights
