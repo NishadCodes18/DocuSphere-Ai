@@ -1,0 +1,10 @@
+[
+  {
+    "question": "What is the main objective of the document?",
+    "relevant_chunks": [1, 4]
+  },
+  {
+    "question": "Which risks or limitations are identified?",
+    "relevant_chunks": [9]
+  }
+]
