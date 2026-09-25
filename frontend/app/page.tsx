@@ -22,13 +22,18 @@ function generateId(): string {
 }
 
 function getBrowserSessionId(): string {
+  if (typeof window === "undefined") return "";
   const key = "docusphere_browser_session";
-  let id = sessionStorage.getItem(key);
-  if (!id) {
-    id = generateId();
-    sessionStorage.setItem(key, id);
+  try {
+    let id = sessionStorage.getItem(key);
+    if (!id) {
+      id = generateId();
+      sessionStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return generateId();
   }
-  return id;
 }
 
 export type ChatSession = {
@@ -47,6 +52,7 @@ type SessionStore = {
 };
 
 function loadSessionStore(): SessionStore {
+  if (typeof window === "undefined") return { sessions: [], version: 1 };
   try {
     const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
     if (!raw) return { sessions: [], version: 1 };
@@ -57,6 +63,7 @@ function loadSessionStore(): SessionStore {
 }
 
 function saveSessionStore(store: SessionStore) {
+  if (typeof window === "undefined") return;
   try {
     localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(store));
   } catch (e) {
@@ -140,6 +147,9 @@ export default function Home() {
 
   // Initialization
   useEffect(() => {
+    if (!browserSessionId.current) {
+      browserSessionId.current = getBrowserSessionId();
+    }
     const initialize = async () => {
       let store = loadSessionStore();
       store = await purgeExpiredSessions(store);
