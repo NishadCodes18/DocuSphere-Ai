@@ -25,10 +25,31 @@ from .retrieval import hybrid_search
 from .web_search import search_web_evidence
 
 
+async def periodic_cleanup_task():
+    """Runs continuously in the background to automatically purge documents older than 24 hours."""
+    while True:
+        try:
+            await asyncio.sleep(5)  # initial delay
+            def purge_expired():
+                with SessionLocal() as db:
+                    deleted = db.execute(
+                        text("DELETE FROM documents WHERE created_at < now() - interval '24 hours' RETURNING id")
+                    ).all()
+                    if deleted:
+                        db.commit()
+                        print(f"[DocuSphere Auto-Cleaner] Successfully purged {len(deleted)} expired document(s) (>24h).")
+            await asyncio.to_thread(purge_expired)
+        except Exception as e:
+            print(f"[DocuSphere Auto-Cleaner Error]: {e}")
+        await asyncio.sleep(600)  # repeat every 10 minutes
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Run DB init in a background thread so the server starts up instantly
     asyncio.create_task(asyncio.to_thread(init_db))
+    # Start autonomous 24h document purging worker
+    asyncio.create_task(periodic_cleanup_task())
     yield
 
 
@@ -114,7 +135,7 @@ def list_documents(include_recycled: bool = False, db: Session = Depends(get_db)
     rows = (
         db.execute(
             text(f"""
-            SELECT id, filename, media_type, file_size_bytes, chunk_count, status, created_at 
+            SELECT id, filename, media_type, file_size_bytes, chunk_count, status, session_id, created_at 
             FROM documents 
             {where_clause}
             ORDER BY created_at DESC
@@ -190,6 +211,34 @@ def session_cleanup(db: Session = Depends(get_db)):
     return {"message": "Session memory recycled", "recycled_count": len(updated)}
 
 
+@router.delete("/documents/cleanup-session")
+def cleanup_session_documents(session_id: str = Query(..., description="Browser session ID"), db: Session = Depends(get_db)):
+    """Permanently deletes all documents uploaded in a specific browser session."""
+    deleted_rows = db.execute(
+        text("DELETE FROM documents WHERE session_id = :session_id RETURNING id"),
+        {"session_id": session_id},
+    ).all()
+    db.commit()
+    return {
+        "message": f"Session documents permanently deleted",
+        "session_id": session_id,
+        "purged_count": len(deleted_rows),
+    }
+
+
+@router.delete("/documents/cleanup-expired")
+def cleanup_expired_documents(db: Session = Depends(get_db)):
+    """Permanently deletes all documents older than 24 hours from the database."""
+    deleted_rows = db.execute(
+        text("DELETE FROM documents WHERE created_at < now() - interval '24 hours' RETURNING id")
+    ).all()
+    db.commit()
+    return {
+        "message": "Expired documents (>24h) permanently purged",
+        "purged_count": len(deleted_rows),
+    }
+
+
 @router.get("/documents/{document_id}/chunks")
 def get_document_chunks(document_id: int, db: Session = Depends(get_db)):
     doc = (
@@ -243,7 +292,7 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
     return {"message": "Document deleted permanently", "id": document_id, "filename": doc["filename"]}
 
 
-def _ingest_file_bytes(content: bytes, filename: str, media_type: str, db: Session) -> dict:
+def _ingest_file_bytes(content: bytes, filename: str, media_type: str, db: Session, session_id: str | None = None) -> dict:
     """Core parser & HNSW vector batch-indexer for all file uploads and Google Drive downloads."""
     suffix = Path(filename or "document.pdf").suffix.lower()
     if suffix not in {".pdf", ".docx", ".pptx", ".txt", ".md", ".csv"}:
@@ -265,8 +314,8 @@ def _ingest_file_bytes(content: bytes, filename: str, media_type: str, db: Sessi
 
         doc_id = db.execute(
             text("""
-                INSERT INTO documents(filename, media_type, file_size_bytes, chunk_count, status) 
-                VALUES (:filename, :media_type, :file_size_bytes, :chunk_count, 'ready') 
+                INSERT INTO documents(filename, media_type, file_size_bytes, chunk_count, status, session_id) 
+                VALUES (:filename, :media_type, :file_size_bytes, :chunk_count, 'ready', :session_id) 
                 RETURNING id
             """),
             {
@@ -274,6 +323,7 @@ def _ingest_file_bytes(content: bytes, filename: str, media_type: str, db: Sessi
                 "media_type": media_type,
                 "file_size_bytes": len(content),
                 "chunk_count": len(chunks),
+                "session_id": session_id,
             },
         ).scalar_one()
 
@@ -300,6 +350,7 @@ def _ingest_file_bytes(content: bytes, filename: str, media_type: str, db: Sessi
             "chunks": len(chunks),
             "file_size_bytes": len(content),
             "status": "ready",
+            "session_id": session_id,
         }
     finally:
         try:
@@ -309,7 +360,11 @@ def _ingest_file_bytes(content: bytes, filename: str, media_type: str, db: Sessi
 
 
 @router.post("/documents/upload")
-def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def upload_document(
+    file: UploadFile = File(...),
+    session_id: str | None = Query(default=None, description="Browser session ID for TTL tracking"),
+    db: Session = Depends(get_db),
+):
     allowed = {".pdf", ".docx", ".pptx", ".txt", ".md", ".csv"}
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in allowed:
@@ -325,12 +380,14 @@ def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db))
         filename=file.filename or "uploaded_document",
         media_type=file.content_type or "application/octet-stream",
         db=db,
+        session_id=session_id,
     )
 
 
 class DriveImportRequest(BaseModel):
     drive_url: str
     custom_filename: str | None = None
+    session_id: str | None = None
 
 
 @router.post("/documents/upload-drive")
@@ -371,6 +428,7 @@ def upload_google_drive(payload: DriveImportRequest, db: Session = Depends(get_d
                 filename=filename,
                 media_type="application/pdf",
                 db=db,
+                session_id=payload.session_id,
             )
     except urllib.error.URLError as e:
         raise HTTPException(502, f"Failed to download Google Drive document: {e}")

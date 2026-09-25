@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS documents (
     file_size_bytes BIGINT DEFAULT 0,
     chunk_count INTEGER DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'ready',
+    session_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS chunks (
@@ -36,14 +37,17 @@ CREATE INDEX IF NOT EXISTS chunks_document_idx ON chunks(document_id);
 CREATE INDEX IF NOT EXISTS chunks_search_idx ON chunks USING GIN(search_vector);
 CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw_idx ON chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS documents_created_at_idx ON documents(created_at DESC);
+CREATE INDEX IF NOT EXISTS documents_session_idx ON documents(session_id);
 """
 
 MIGRATION_SQL = """
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT DEFAULT 0;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS chunk_count INTEGER DEFAULT 0;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ready';
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS session_id TEXT;
 CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw_idx ON chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS documents_created_at_idx ON documents(created_at DESC);
+CREATE INDEX IF NOT EXISTS documents_session_idx ON documents(session_id);
 """
 
 

@@ -6,11 +6,12 @@ interface DriveModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (filename: string, chunks: number) => void;
+  sessionId?: string;
 }
 
 import { API } from "../lib/api";
 
-export default function DriveModal({ isOpen, onClose, onSuccess }: DriveModalProps) {
+export default function DriveModal({ isOpen, onClose, onSuccess, sessionId }: DriveModalProps) {
   const [driveUrl, setDriveUrl] = useState("");
   const [customName, setCustomName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,6 +33,7 @@ export default function DriveModal({ isOpen, onClose, onSuccess }: DriveModalPro
         body: JSON.stringify({
           drive_url: driveUrl.trim(),
           custom_filename: customName.trim() || undefined,
+          session_id: sessionId,
         }),
       });
 
