@@ -12,13 +12,43 @@
   },
   "rewrites": [
     {
-      "source": "/(api|documents|qa|exam|drive|health)(.*)",
+      "source": "/api/:path*",
       "destination": {
         "service": "backend"
       }
     },
     {
-      "source": "/(.*)",
+      "source": "/documents/:path*",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/qa/:path*",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/exam/:path*",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/drive/:path*",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/health",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/:path*",
       "destination": {
         "service": "frontend"
       }

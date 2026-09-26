@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from .ai import AIService, _check_greeting
 from .config import settings
-from .db import SessionLocal, init_db
+from .db import SessionLocal, init_db, ensure_db_initialized
 from .parsers import chunk_blocks, parse_file
 from .retrieval import hybrid_search
 from .web_search import search_web_evidence
@@ -76,6 +76,7 @@ router = APIRouter()
 
 
 def get_db():
+    ensure_db_initialized()
     db = SessionLocal()
     try:
         yield db
@@ -294,6 +295,9 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
 
 def _ingest_file_bytes(content: bytes, filename: str, media_type: str, db: Session, session_id: str | None = None) -> dict:
     """Core parser & HNSW vector batch-indexer for all file uploads and Google Drive downloads."""
+    if not content:
+        raise HTTPException(400, "Uploaded file is empty or cannot be read.")
+
     suffix = Path(filename or "document.pdf").suffix.lower()
     if suffix not in {".pdf", ".docx", ".pptx", ".txt", ".md", ".csv"}:
         suffix = ".pdf"
@@ -306,7 +310,7 @@ def _ingest_file_bytes(content: bytes, filename: str, media_type: str, db: Sessi
         blocks = parse_file(temp_path, media_type)
         chunks = chunk_blocks(blocks)
         if not chunks:
-            raise HTTPException(422, "No extractable text or content found in document")
+            raise HTTPException(422, "No extractable text or content found in document. Please upload a readable document.")
 
         ai = AIService()
         chunk_texts = [c.text for c in chunks]
@@ -352,6 +356,9 @@ def _ingest_file_bytes(content: bytes, filename: str, media_type: str, db: Sessi
             "status": "ready",
             "session_id": session_id,
         }
+    except Exception:
+        db.rollback()
+        raise
     finally:
         try:
             os.unlink(temp_path)

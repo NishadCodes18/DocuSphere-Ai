@@ -313,6 +313,16 @@ export default function Home() {
   };
 
   const handleUpload = async (file: File) => {
+    if (!file || file.size === 0) {
+      showToast("Selected file is empty.", "error");
+      return;
+    }
+
+    if (file.size > 20 * 1024 * 1024) {
+      showToast("File exceeds maximum upload size of 20MB.", "error");
+      return;
+    }
+
     setUploading(true);
     setUploadStatus(`Indexing "${file.name}" & building HNSW vectors...`);
     const form = new FormData();
@@ -323,9 +333,26 @@ export default function Home() {
         `${API}/documents/upload?session_id=${encodeURIComponent(browserSessionId.current)}`,
         { method: "POST", body: form }
       );
-      const data = await res.json();
+
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Response is non-JSON (e.g. Vercel 413 HTML page or 504 gateway timeout)
+      }
+
       if (!res.ok) {
-        showToast(data.detail || "Upload failed", "error");
+        let errorMsg = data?.detail;
+        if (!errorMsg) {
+          if (res.status === 413) {
+            errorMsg = "File exceeds Vercel Serverless payload limit (4.5MB). Please upload a smaller file.";
+          } else if (res.status === 504) {
+            errorMsg = "Processing timed out on Vercel. Please try a smaller document.";
+          } else {
+            errorMsg = `Upload failed with status code ${res.status}.`;
+          }
+        }
+        showToast(errorMsg, "error");
       } else {
         await loadDocs();
         if (data.document_id) {
@@ -343,9 +370,9 @@ export default function Home() {
         }
         showToast(`Indexed "${data.filename}" (${data.chunks} chunks) into pgvector!`, "success");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Upload error:", err);
-      showToast("Could not communicate with DocuSphere API.", "error");
+      showToast(err?.message || "Could not communicate with DocuSphere API.", "error");
     } finally {
       setUploading(false);
       setUploadStatus("");
