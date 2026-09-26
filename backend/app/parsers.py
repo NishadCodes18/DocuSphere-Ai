@@ -16,36 +16,58 @@ class SourceBlock:
 def parse_file(path: str, media_type: str) -> list[SourceBlock]:
     suffix = Path(path).suffix.lower()
     if suffix == ".pdf" or media_type == "application/pdf":
-        reader = PdfReader(path)
-        blocks: list[SourceBlock] = []
-        for idx, page in enumerate(reader.pages, start=1):
-            text = (page.extract_text() or "").strip()
-            if text:
-                blocks.append(SourceBlock(text=text, page_number=idx))
-        return blocks
+        try:
+            reader = PdfReader(path)
+            if reader.is_encrypted:
+                try:
+                    reader.decrypt("")
+                except Exception:
+                    raise ValueError("This PDF file is password protected.")
+            blocks: list[SourceBlock] = []
+            for idx, page in enumerate(reader.pages, start=1):
+                try:
+                    text = (page.extract_text() or "").strip()
+                except Exception:
+                    text = ""
+                if text:
+                    blocks.append(SourceBlock(text=text, page_number=idx))
+            return blocks
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ValueError(f"Unable to read PDF file: {e}")
 
     if suffix == ".docx":
-        doc = DocxDocument(path)
-        text = "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
-        return [SourceBlock(text=text)] if text else []
+        try:
+            doc = DocxDocument(path)
+            text = "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
+            return [SourceBlock(text=text)] if text else []
+        except Exception as e:
+            raise ValueError(f"Unable to read DOCX file: {e}")
 
     if suffix == ".pptx":
-        prs = Presentation(path)
-        blocks = []
-        for slide_no, slide in enumerate(prs.slides, start=1):
-            parts: list[str] = []
-            for shape in slide.shapes:
-                if hasattr(shape, "text") and shape.text.strip():
-                    parts.append(shape.text.strip())
-            text = "\n".join(parts).strip()
-            if text:
-                blocks.append(SourceBlock(text=text, slide_number=slide_no))
-        return blocks
+        try:
+            prs = Presentation(path)
+            blocks = []
+            for slide_no, slide in enumerate(prs.slides, start=1):
+                parts: list[str] = []
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text.strip():
+                        parts.append(shape.text.strip())
+                text = "\n".join(parts).strip()
+                if text:
+                    blocks.append(SourceBlock(text=text, slide_number=slide_no))
+            return blocks
+        except Exception as e:
+            raise ValueError(f"Unable to read PPTX file: {e}")
 
     if suffix in (".txt", ".md", ".csv") or media_type.startswith("text/"):
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            text = f.read().strip()
-        return [SourceBlock(text=text, page_number=1)] if text else []
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read().strip()
+            return [SourceBlock(text=text, page_number=1)] if text else []
+        except Exception as e:
+            raise ValueError(f"Unable to read text file: {e}")
 
     raise ValueError("Unsupported file type. Use PDF, DOCX, PPTX, TXT, or MD.")
 

@@ -71,7 +71,7 @@ export default function DriveModal({ isOpen, onClose, onSuccess, sessionId }: Dr
             </div>
             <div>
               <h3 className="modal-title">Google Drive Cloud Ingestion</h3>
-              <p className="modal-subtitle">Paste any shareable Google Drive link to index directly into pgvector</p>
+              <p className="modal-subtitle">Paste any shareable Google Drive link to import into Knowledge Vault</p>
             </div>
           </div>
           <button className="modal-close-btn" onClick={onClose}>✕</button>
@@ -120,10 +120,10 @@ export default function DriveModal({ isOpen, onClose, onSuccess, sessionId }: Dr
               {loading ? (
                 <>
                   <div className="btn-spinner" />
-                  Fetching & Vectorizing…
+                  Fetching & Processing…
                 </>
               ) : (
-                "⚡ Import & Index into pgvector"
+                "⚡ Import Document"
               )}
             </button>
           </div>

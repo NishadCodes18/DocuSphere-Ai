@@ -324,7 +324,7 @@ export default function Home() {
     }
 
     setUploading(true);
-    setUploadStatus(`Indexing "${file.name}" & building HNSW vectors...`);
+    setUploadStatus(`Processing "${file.name}"...`);
     const form = new FormData();
     form.append("file", file);
 
@@ -368,7 +368,7 @@ export default function Home() {
             );
           }
         }
-        showToast(`Indexed "${data.filename}" (${data.chunks} chunks) into pgvector!`, "success");
+        showToast(`"${data.filename}" uploaded successfully!`, "success");
       }
     } catch (err: any) {
       console.error("Upload error:", err);
@@ -678,7 +678,7 @@ export default function Home() {
         sessionId={browserSessionId.current}
         onSuccess={(filename, chunks) => {
           loadDocs();
-          showToast(`Indexed "${filename}" (${chunks} chunks) from Google Drive!`, "success");
+          showToast(`"${filename}" imported successfully!`, "success");
         }}
       />
 

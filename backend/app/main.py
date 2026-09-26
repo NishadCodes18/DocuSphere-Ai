@@ -203,11 +203,15 @@ def empty_recycle_bin(db: Session = Depends(get_db)):
 
 
 @router.post("/documents/session-cleanup")
-def session_cleanup(db: Session = Depends(get_db)):
-    """Called when ephemeral session ends or browser closes: moves all active documents to Recycle Bin."""
-    updated = db.execute(
-        text("UPDATE documents SET status = 'recycled' WHERE status = 'ready' RETURNING id")
-    ).all()
+def session_cleanup(session_id: str | None = Query(default=None), db: Session = Depends(get_db)):
+    """Called when ephemeral session ends: moves active session documents to Recycle Bin."""
+    if session_id:
+        updated = db.execute(
+            text("UPDATE documents SET status = 'recycled' WHERE status = 'ready' AND session_id = :session_id RETURNING id"),
+            {"session_id": session_id},
+        ).all()
+    else:
+        updated = []
     db.commit()
     return {"message": "Session memory recycled", "recycled_count": len(updated)}
 
@@ -269,11 +273,17 @@ def get_document_chunks(document_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/documents/all")
-def delete_all_documents(db: Session = Depends(get_db)):
-    """Permanently deletes all documents and their pgvector chunks from PostgreSQL."""
-    deleted_rows = db.execute(text("DELETE FROM documents RETURNING id")).all()
+def delete_all_documents(session_id: str | None = Query(default=None), db: Session = Depends(get_db)):
+    """Permanently deletes documents (for specific session if provided, or all) from PostgreSQL."""
+    if session_id:
+        deleted_rows = db.execute(
+            text("DELETE FROM documents WHERE session_id = :session_id RETURNING id"),
+            {"session_id": session_id}
+        ).all()
+    else:
+        deleted_rows = db.execute(text("DELETE FROM documents RETURNING id")).all()
     db.commit()
-    return {"message": "All documents deleted permanently", "purged_count": len(deleted_rows)}
+    return {"message": "Documents deleted permanently", "purged_count": len(deleted_rows)}
 
 
 @router.delete("/documents/{document_id}")
@@ -372,19 +382,26 @@ def upload_document(
     session_id: str | None = Query(default=None, description="Browser session ID for TTL tracking"),
     db: Session = Depends(get_db),
 ):
+    raw_filename = file.filename or "uploaded_document"
+    # Security: strip directory path traversal components
+    clean_filename = Path(raw_filename).name
+    clean_filename = re.sub(r'[\r\n\x00]', '', clean_filename).strip()
+    if not clean_filename:
+        clean_filename = "uploaded_document.pdf"
+
     allowed = {".pdf", ".docx", ".pptx", ".txt", ".md", ".csv"}
-    suffix = Path(file.filename or "").suffix.lower()
+    suffix = Path(clean_filename).suffix.lower()
     if suffix not in allowed:
         raise HTTPException(400, "Supported formats: PDF, DOCX, PPTX, TXT, MD, CSV")
 
-    content = file.file.read(settings.max_upload_mb * 1024 * 1024 + 1)
-    file_size = len(content)
-    if file_size > settings.max_upload_mb * 1024 * 1024:
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    content = file.file.read(max_bytes + 1)
+    if len(content) > max_bytes:
         raise HTTPException(413, f"File exceeds maximum upload size of {settings.max_upload_mb}MB")
 
     return _ingest_file_bytes(
         content=content,
-        filename=file.filename or "uploaded_document",
+        filename=clean_filename,
         media_type=file.content_type or "application/octet-stream",
         db=db,
         session_id=session_id,
@@ -420,11 +437,17 @@ def upload_google_drive(payload: DriveImportRequest, db: Session = Depends(get_d
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            content = resp.read()
+            max_bytes = settings.max_upload_mb * 1024 * 1024
+            content = resp.read(max_bytes + 1)
+            if len(content) > max_bytes:
+                raise HTTPException(413, f"Drive file exceeds maximum allowed size of {settings.max_upload_mb}MB")
+
             cd = resp.headers.get("Content-Disposition", "")
             fn_match = re.search(r'filename="?([^";]+)"?', cd)
             extracted_name = fn_match.group(1) if fn_match else f"Drive_Doc_{file_id[:8]}.pdf"
-            filename = payload.custom_filename or extracted_name
+            raw_filename = payload.custom_filename or extracted_name
+            clean_filename = Path(raw_filename).name
+            clean_filename = re.sub(r'[\r\n\x00]', '', clean_filename).strip() or f"Drive_Doc_{file_id[:8]}.pdf"
 
             # Check if Google returned an HTML login page instead of file
             if content.startswith(b"<!DOCTYPE html>") and b"accounts.google.com" in content:
@@ -432,7 +455,7 @@ def upload_google_drive(payload: DriveImportRequest, db: Session = Depends(get_d
 
             return _ingest_file_bytes(
                 content=content,
-                filename=filename,
+                filename=clean_filename,
                 media_type="application/pdf",
                 db=db,
                 session_id=payload.session_id,
